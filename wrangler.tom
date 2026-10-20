@@ -1,0 +1,6 @@
+name = "new-project"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+DATABASE_URL ="postgresql://Fraud_Intelligence_owner:npg_m40hFeXqnsbU@ep-tiny-mountain-b5w737f7.c-7.us-east-2.aws.neon.tech/Fraud_Intelligence?sslmode=require&channel_binding=require"

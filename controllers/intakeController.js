@@ -2,20 +2,88 @@ const db = require('../config/db');
 
 // 1. API ya Kuingiza Lalamiko Jipya (Create Fraud Intake)
 exports.createIntake = async (req, res) => {
-    const { source, description, reported_by, provider_id, member_id } = req.body;
+    let {
+        source,
+        sourceChannel,
+        description,
+        reported_by,
+        intakeOfficer,
+        provider_id,
+        facilityProvider,
+        facility,
+        member_id,
+        memberId,
+        suspectedFraudCategory,
+        category,
+        claimAuthorization,
+        claimId,
+        serviceType,
+        suspectedAmount,
+        amount,
+        redFlag
+    } = req.body;
 
     try {
+        const finalSource = sourceChannel || source || 'Whistleblower';
+        const finalReportedBy = intakeOfficer || reported_by || req.user?.username || 'Intake Officer';
+
+        // Tafuta au unda provider_id
+        let resolvedProviderId = parseInt(provider_id, 10);
+        const facilityName = facilityProvider || facility;
+        if (isNaN(resolvedProviderId) && facilityName) {
+            const provCheck = await db.query('SELECT id FROM providers WHERE name ILIKE $1 LIMIT 1', [facilityName.trim()]);
+            if (provCheck.rows.length > 0) {
+                resolvedProviderId = provCheck.rows[0].id;
+            } else {
+                const newProv = await db.query(
+                    'INSERT INTO providers (provider_code, name, type, location, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+                    [`FAC-${Math.floor(100 + Math.random() * 900)}`, facilityName.trim(), 'Hospital', 'Zanzibar', 'Active']
+                );
+                resolvedProviderId = newProv.rows[0].id;
+            }
+        }
+
+        // Tafuta au unda member_id
+        let resolvedMemberId = parseInt(member_id, 10);
+        const memNum = memberId;
+        if (isNaN(resolvedMemberId) && memNum) {
+            const memCheck = await db.query('SELECT id FROM members WHERE member_number ILIKE $1 LIMIT 1', [memNum.trim()]);
+            if (memCheck.rows.length > 0) {
+                resolvedMemberId = memCheck.rows[0].id;
+            } else {
+                const newMem = await db.query(
+                    'INSERT INTO members (member_number, full_name, gender, dob, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+                    [memNum.trim(), `Member ${memNum}`, 'M', '1990-01-01', 'Active']
+                );
+                resolvedMemberId = newMem.rows[0].id;
+            }
+        }
+
+        // Unganisha taarifa za lalamiko kama maelezo ya kina
+        let fullDescription = description || '';
+        const detailsArray = [];
+        if (suspectedFraudCategory || category) detailsArray.push(`Aina: ${suspectedFraudCategory || category}`);
+        if (redFlag) detailsArray.push(`Red Flag: ${redFlag}`);
+        if (suspectedAmount || amount) detailsArray.push(`Kiasi: TZS ${suspectedAmount || amount}`);
+        if (claimAuthorization || claimId) detailsArray.push(`Claim/Auth: ${claimAuthorization || claimId}`);
+        if (serviceType) detailsArray.push(`Huduma: ${serviceType}`);
+        if (facilityName) detailsArray.push(`Kituo: ${facilityName}`);
+
+        if (detailsArray.length > 0) {
+            fullDescription = `${fullDescription ? fullDescription + ' | ' : ''}${detailsArray.join(' | ')}`;
+        }
+
         const queryText = `
             INSERT INTO fraud_intake (source, description, reported_by, provider_id, member_id, status) 
             VALUES ($1, $2, $3, $4, $5, 'Pending_Validation') 
             RETURNING *;
         `;
         const values = [
-            source || 'Whistleblower',
-            description || 'Taarifa ya udanganyifu',
-            reported_by || 'Mwananchi',
-            provider_id || null,
-            member_id || null
+            finalSource,
+            fullDescription || 'Taarifa ya udanganyifu iliyopokelewa',
+            finalReportedBy,
+            isNaN(resolvedProviderId) ? null : resolvedProviderId,
+            isNaN(resolvedMemberId) ? null : resolvedMemberId
         ];
         
         const result = await db.query(queryText, values);

@@ -7,6 +7,8 @@ const pool = new Pool({
   database: process.env.DB_DATABASE,
   password: String(process.env.DB_PASSWORD),
   port: process.env.DB_PORT,
+  // ONGEZA MSTARI HUU CHINI ILI KURUHUSU SSL YA NEON
+  ssl: true, 
 });
 
 // Jaribio la kuunganisha database

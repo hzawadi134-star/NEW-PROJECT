@@ -1,4 +1,3 @@
-// routes/caseRoutes.js
 const express = require('express');
 const router = express.Router();
 const caseController = require('../controllers/caseController');
@@ -10,6 +9,15 @@ router.post('/triage', protect, restrictTo('Admin', 'Manager'), caseController.c
 
 // 2. Kuona Kesi Zote (GET)
 // Mamlaka: DG, Legal_Unit, Manager, na Investigator (hawa wote wanapaswa kuona kesi kulingana na majukumu yao)
-router.get('/', protect, restrictTo('Admin', 'Manager', 'Investigator', 'DG', 'Legal_Unit'), caseController.getAllCases);
+router.get('/', protect, restrictTo('Admin', 'Manager', 'Investigator', 'DG', 'Legal_Unit', 'Intake_Officer'), caseController.getAllCases);
+
+// 3. Kuona Kesi Moja (GET /:id)
+router.get('/:id', protect, caseController.getCaseById);
+
+// 4. Kugawa Kesi (PUT /:id/assign)
+router.put('/:id/assign', protect, restrictTo('Admin', 'Manager'), caseController.assignCase);
+
+// 5. Kuboresha Kesi (PUT /:id)
+router.put('/:id', protect, restrictTo('Admin', 'Manager', 'Investigator'), caseController.updateCase);
 
 module.exports = router;

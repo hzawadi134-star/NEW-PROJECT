@@ -4,23 +4,46 @@ const db = require('../config/db');
 
 // 1. API ya Kutoa Uamuzi (POST)
 exports.createDecision = async (req, res) => {
-    const { case_id, classification, decision, sanction_type, amount_to_recover, decided_by } = req.body;
+    let { case_id, classification, decision, sanction_type, amount_to_recover, decided_by } = req.body;
     try {
-        const caseExists = await db.query('SELECT * FROM cases WHERE id = \$1', [case_id]);
+        let resolvedCaseId = parseInt(case_id, 10);
+        if (isNaN(resolvedCaseId)) {
+            const lookup = await db.query(
+                'SELECT id FROM cases WHERE case_number = $1 OR case_number ILIKE $2',
+                [case_id, `%${case_id}%`]
+            );
+            if (lookup.rows.length > 0) {
+                resolvedCaseId = lookup.rows[0].id;
+            }
+        }
+
+        if (!resolvedCaseId) {
+            return res.status(404).json({ message: 'Kesi haikupatikana!' });
+        }
+
+        const caseExists = await db.query('SELECT * FROM cases WHERE id = $1', [resolvedCaseId]);
         if (caseExists.rows.length === 0) {
             return res.status(404).json({ message: 'Kesi haikupatikana!' });
         }
+
         const queryText = `
             INSERT INTO case_decisions (case_id, classification, decision, sanction_type, amount_to_recover, decided_by)
             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;
         `;
-        const values = [case_id, classification, decision, sanction_type, amount_to_recover || 0.00, decided_by];
+        const values = [
+            resolvedCaseId,
+            classification || 'Confirmed Fraud',
+            decision || 'Final decision recorded',
+            sanction_type || 'None',
+            amount_to_recover || 0.00,
+            decided_by || req.user?.id || null
+        ];
         const newDecision = await db.query(queryText, values);
-        await db.query("UPDATE cases SET status = 'Closed', updated_at = CURRENT_TIMESTAMP WHERE id = \$1", [case_id]);
-        res.status(201).json({ message: 'Maamuzi yamehifadhiwa! ⚖️', decision_details: newDecision.rows });
+        await db.query("UPDATE cases SET status = 'Closed', updated_at = CURRENT_TIMESTAMP WHERE id = $1", [resolvedCaseId]);
+        res.status(201).json({ message: 'Maamuzi yamehifadhiwa! ⚖️', decision_details: newDecision.rows[0] });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Hitilafu imetokea!' });
+        console.error('Create decision error:', error);
+        res.status(500).json({ message: 'Hitilafu imetokea wakati wa kurekodi uamuzi: ' + error.message });
     }
 };
 
@@ -28,12 +51,23 @@ exports.createDecision = async (req, res) => {
 exports.getCaseDecision = async (req, res) => {
     const { case_id } = req.params;
     try {
+        let resolvedCaseId = parseInt(case_id, 10);
+        if (isNaN(resolvedCaseId)) {
+            const lookup = await db.query(
+                'SELECT id FROM cases WHERE case_number = $1 OR case_number ILIKE $2',
+                [case_id, `%${case_id}%`]
+            );
+            if (lookup.rows.length > 0) {
+                resolvedCaseId = lookup.rows[0].id;
+            }
+        }
+
         const queryText = `
             SELECT cd.*, c.case_number, c.risk_level, u.username as officer_name 
             FROM case_decisions cd JOIN cases c ON cd.case_id = c.id
             LEFT JOIN users u ON cd.decided_by = u.id WHERE cd.case_id = $1;
         `;
-        const result = await db.query(queryText, [case_id]);
+        const result = await db.query(queryText, [resolvedCaseId || 0]);
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Kesi hii bado haina maamuzi!' });
         }
@@ -82,11 +116,11 @@ exports.updateDecision = async (req, res) => {
 exports.deleteDecision = async (req, res) => {
     const { id } = req.params;
     try {
-        const decisionResult = await db.query('SELECT case_id FROM case_decisions WHERE id = \$1', [id]);
+        const decisionResult = await db.query('SELECT case_id FROM case_decisions WHERE id = $1', [id]);
         if (decisionResult.rows.length === 0) return res.status(404).json({ message: 'Maamuzi hayapo!' });
         const case_id = decisionResult.rows[0].case_id;
-        await db.query('DELETE FROM case_decisions WHERE id = \$1', [id]);
-        await db.query("UPDATE cases SET status = 'Under_Investigation' WHERE id = \$1", [case_id]);
+        await db.query('DELETE FROM case_decisions WHERE id = $1', [id]);
+        await db.query("UPDATE cases SET status = 'Under_Investigation' WHERE id = $1", [case_id]);
         res.status(200).json({ message: 'Maamuzi yamefutwa kikamilifu!' });
     } catch (error) {
         console.error(error);
